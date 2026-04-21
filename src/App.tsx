@@ -4,18 +4,28 @@ import { PopulationView } from './components/PopulationView'
 import { ScenarioCard } from './components/ScenarioCard'
 import { StatsPanel } from './components/StatsPanel'
 import { TimelineControls } from './components/TimelineControls'
-import { defaultPreset, presets } from './sim/presets'
+import {
+  defaultDisease,
+  defaultPreset,
+  diseaseProfiles,
+} from './sim/presets'
 import { runDeterministicSimulation } from './sim/engine'
 import type { SimulationParams } from './sim/types'
 
 function App() {
+  const [selectedDiseaseKey, setSelectedDiseaseKey] = useState(defaultDisease.key)
   const [selectedPresetKey, setSelectedPresetKey] = useState(defaultPreset.key)
   const [params, setParams] = useState<SimulationParams>(defaultPreset.params)
   const [currentGeneration, setCurrentGeneration] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
   const [animationSpeed, setAnimationSpeed] = useState(1)
+  const selectedDisease =
+    diseaseProfiles.find((disease) => disease.key === selectedDiseaseKey) ??
+    defaultDisease
   const selectedPreset =
-    presets.find((preset) => preset.key === selectedPresetKey) ?? defaultPreset
+    selectedDisease.scenarios.find((preset) => preset.key === selectedPresetKey) ??
+    selectedDisease.scenarios[0] ??
+    defaultPreset
 
   const snapshots = useMemo(() => runDeterministicSimulation(params), [params])
   const maxGeneration = snapshots.length - 1
@@ -38,10 +48,23 @@ function App() {
   }, [animationSpeed, isPlaying, snapshots.length])
 
   const applyPreset = (presetKey: string) => {
-    const selected = presets.find((preset) => preset.key === presetKey)
+    const selected = selectedDisease.scenarios.find(
+      (preset) => preset.key === presetKey,
+    )
     if (!selected) return
     setSelectedPresetKey(selected.key)
     setParams(selected.params)
+    setCurrentGeneration(0)
+    setIsPlaying(false)
+  }
+
+  const applyDisease = (diseaseKey: string) => {
+    const disease = diseaseProfiles.find((item) => item.key === diseaseKey)
+    if (!disease) return
+    const firstPreset = disease.scenarios[0]
+    setSelectedDiseaseKey(disease.key)
+    setSelectedPresetKey(firstPreset.key)
+    setParams(firstPreset.params)
     setCurrentGeneration(0)
     setIsPlaying(false)
   }
@@ -53,15 +76,39 @@ function App() {
       <div className="mx-auto grid min-h-screen max-w-[1600px] grid-cols-1 gap-4 p-4 lg:grid-cols-[380px_1fr]">
         <aside className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
           <h1 className="text-xl font-semibold text-slate-100">
-            Recessive Disease Population Simulator
+            Hemat Genetic Population Simulator
           </h1>
           <p className="mt-2 text-sm text-slate-300">
-            Explore how genotype prevalence changes over generations under
-            selection, mating structure, and treatment.
+            Explore population-scale trajectories across hematologic inheritance
+            patterns while preserving clinically relevant detail.
           </p>
 
+          <label className="mt-4 block text-xs text-slate-300">
+            Disease profile
+            <select
+              className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-2 text-sm text-slate-100"
+              value={selectedDisease.key}
+              onChange={(event) => applyDisease(event.target.value)}
+            >
+              {diseaseProfiles.map((disease) => (
+                <option key={disease.key} value={disease.key}>
+                  {disease.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div className="mt-2 rounded-lg border border-slate-800 bg-slate-950/40 p-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-300">
+              {selectedDisease.inheritanceMode.replace('-', ' ')}
+            </p>
+            <p className="mt-1 text-xs text-slate-300">
+              {selectedDisease.shortDescription}
+            </p>
+          </div>
+
           <div className="mt-4 space-y-2">
-            {presets.map((preset) => (
+            {selectedDisease.scenarios.map((preset) => (
               <ScenarioCard
                 key={preset.key}
                 preset={preset}
@@ -74,6 +121,7 @@ function App() {
           <ControlPanel
             params={params}
             baselineParams={selectedPreset.params}
+            profile={selectedDisease}
             onParamsChange={setParams}
             onReset={resetToPreset}
           />
@@ -84,8 +132,7 @@ function App() {
             <div>
               <h2 className="text-lg font-semibold">Population Composition</h2>
               <p className="text-sm text-slate-300">
-                25-50-25 only applies to carrier x carrier pairings, not whole
-                populations.
+                {selectedDisease.focusMessage}
               </p>
             </div>
             <span className="rounded-full border border-slate-700 px-3 py-1 text-sm text-slate-300">
@@ -94,10 +141,15 @@ function App() {
           </div>
 
           <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_320px]">
-            <PopulationView snapshot={currentSnapshot} />
+            <PopulationView
+              snapshot={currentSnapshot}
+              genotypeLabels={selectedDisease.genotypeLabels}
+            />
             <StatsPanel
               current={currentSnapshot}
               history={snapshots.slice(0, safeGeneration + 1)}
+              genotypeLabels={selectedDisease.genotypeLabels}
+              metricLabels={selectedDisease.metricLabels}
             />
           </div>
 

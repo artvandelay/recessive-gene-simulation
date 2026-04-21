@@ -1,8 +1,14 @@
-import type { GenerationSnapshot } from '../sim/types'
+import type {
+  GenerationSnapshot,
+  GenotypeLabelSet,
+  MetricLabelSet,
+} from '../sim/types'
 
 interface StatsPanelProps {
   current: GenerationSnapshot
   history: GenerationSnapshot[]
+  genotypeLabels: GenotypeLabelSet
+  metricLabels?: Partial<MetricLabelSet>
 }
 
 function Sparkline({
@@ -39,26 +45,36 @@ function Sparkline({
   )
 }
 
-function metricRows(snapshot: GenerationSnapshot) {
+function metricRows(
+  snapshot: GenerationSnapshot,
+  metricLabels?: Partial<MetricLabelSet>,
+) {
   return [
     {
       label: 'Allele frequency q',
       value: snapshot.alleleFrequencyQ.toFixed(4),
     },
     {
-      label: 'Carrier prevalence',
+      label: metricLabels?.carrierPrevalence ?? 'Carrier prevalence',
       value: `${(snapshot.carrierPrevalence * 100).toFixed(2)}%`,
     },
     {
-      label: 'Affected prevalence',
+      label: metricLabels?.affectedPrevalence ?? 'Affected prevalence',
       value: `${(snapshot.affectedPrevalence * 100).toFixed(2)}%`,
     },
   ]
 }
 
-export function StatsPanel({ current, history }: StatsPanelProps) {
+export function StatsPanel({
+  current,
+  history,
+  genotypeLabels,
+  metricLabels,
+}: StatsPanelProps) {
   const affectedSeries = history.map((item) => item.affectedPrevalence)
   const carrierSeries = history.map((item) => item.carrierPrevalence)
+  const carrierLabel = metricLabels?.carrierPrevalence ?? 'Carrier prevalence'
+  const affectedLabel = metricLabels?.affectedPrevalence ?? 'Affected prevalence'
 
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3">
@@ -66,19 +82,19 @@ export function StatsPanel({ current, history }: StatsPanelProps) {
 
       <div className="mt-3 space-y-2 text-sm">
         <div className="flex items-center justify-between text-slate-300">
-          <span>AA</span>
+          <span>{genotypeLabels.AA}</span>
           <span className="font-mono text-slate-100">
             {current.counts.AA.toLocaleString()}
           </span>
         </div>
         <div className="flex items-center justify-between text-slate-300">
-          <span>Aa</span>
+          <span>{genotypeLabels.Aa}</span>
           <span className="font-mono text-slate-100">
             {current.counts.Aa.toLocaleString()}
           </span>
         </div>
         <div className="flex items-center justify-between text-slate-300">
-          <span>aa</span>
+          <span>{genotypeLabels.aa}</span>
           <span className="font-mono text-slate-100">
             {current.counts.aa.toLocaleString()}
           </span>
@@ -86,7 +102,7 @@ export function StatsPanel({ current, history }: StatsPanelProps) {
       </div>
 
       <div className="mt-4 space-y-2 rounded-lg border border-slate-800 bg-slate-900/50 p-2">
-        {metricRows(current).map((metric) => (
+        {metricRows(current, metricLabels).map((metric) => (
           <div
             key={metric.label}
             className="flex items-center justify-between text-xs text-slate-300"
@@ -97,7 +113,9 @@ export function StatsPanel({ current, history }: StatsPanelProps) {
         ))}
       </div>
 
-      <p className="mt-4 text-xs text-slate-300">Trend preview (carrier vs affected)</p>
+      <p className="mt-4 text-xs text-slate-300">
+        Trend preview ({carrierLabel} vs {affectedLabel})
+      </p>
       <svg viewBox="0 0 250 80" className="mt-2 h-24 w-full">
         <Sparkline values={carrierSeries} stroke="#a5b4fc" />
         <Sparkline values={affectedSeries} stroke="#fb7185" />

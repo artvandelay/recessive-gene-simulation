@@ -1,4 +1,10 @@
 export type Genotype = 'AA' | 'Aa' | 'aa'
+export type DiseaseCategory = 'hematology'
+export type InheritanceMode =
+  | 'autosomal-recessive'
+  | 'autosomal-dominant'
+  | 'x-linked-approx'
+  | 'multi-allelic-approx'
 
 export interface GenotypeCounts {
   AA: number
@@ -50,7 +56,55 @@ export interface GenerationSnapshot {
 
 export interface ScenarioPreset {
   key: string
+  diseaseKey: string
   title: string
   description: string
   params: SimulationParams
+}
+
+export interface GenotypeLabelSet {
+  AA: string
+  Aa: string
+  aa: string
+}
+
+export interface MetricLabelSet {
+  carrierPrevalence: string
+  affectedPrevalence: string
+}
+
+export interface ParamInfo {
+  label: string
+  what: string
+  reasonable: string
+  extremes: string
+}
+
+export type ControlKey =
+  | 'initialPopulation'
+  | 'initialAlleleFrequency'
+  | 'carrierPairingBias'
+  | 'consanguinityBoost'
+  | 'endogamyBias'
+  | 'survivalWaa'
+  | 'fertilityFaa'
+  | 'malariaPressure'
+  | 'heterozygoteAdvantageStrength'
+  | 'treatmentShiftEnabled'
+  | 'generations'
+  | 'fixedPopulationSize'
+  | 'averageChildrenPerCouple'
+
+export interface DiseaseProfile {
+  key: string
+  category: DiseaseCategory
+  name: string
+  shortDescription: string
+  inheritanceMode: InheritanceMode
+  focusMessage: string
+  genotypeLabels: GenotypeLabelSet
+  metricLabels?: Partial<MetricLabelSet>
+  visibleControls: ControlKey[]
+  tooltipOverrides?: Partial<Record<ControlKey, ParamInfo>>
+  scenarios: ScenarioPreset[]
 }

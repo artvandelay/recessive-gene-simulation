@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { runDeterministicSimulation } from './engine'
-import { presets } from './presets'
+import { getPresetByKey } from './presets'
 import type { SimulationParams } from './types'
 
 function cloneParams(params: SimulationParams): SimulationParams {
@@ -8,8 +8,17 @@ function cloneParams(params: SimulationParams): SimulationParams {
 }
 
 describe('deterministic simulation scientific checks', () => {
+  const neutralPreset = getPresetByKey('neutral-recessive')
+  const severePreset = getPresetByKey('severe-recessive')
+  const balancingPreset = getPresetByKey('sickle-balancing')
+  const treatmentPreset = getPresetByKey('thal-treatment')
+
+  if (!neutralPreset || !severePreset || !balancingPreset || !treatmentPreset) {
+    throw new Error('Core scientific presets are missing from preset registry.')
+  }
+
   it('neutral recessive keeps allele frequency approximately conserved', () => {
-    const params = cloneParams(presets[0].params)
+    const params = cloneParams(neutralPreset.params)
     params.generations = 100
     const snapshots = runDeterministicSimulation(params)
 
@@ -19,7 +28,7 @@ describe('deterministic simulation scientific checks', () => {
   })
 
   it('strong selection against aa lowers affected prevalence', () => {
-    const params = cloneParams(presets[1].params)
+    const params = cloneParams(severePreset.params)
     params.generations = 80
     const snapshots = runDeterministicSimulation(params)
 
@@ -29,7 +38,7 @@ describe('deterministic simulation scientific checks', () => {
   })
 
   it('carrier prevalence declines more slowly than affected prevalence', () => {
-    const params = cloneParams(presets[1].params)
+    const params = cloneParams(severePreset.params)
     params.generations = 80
     const snapshots = runDeterministicSimulation(params)
 
@@ -48,7 +57,7 @@ describe('deterministic simulation scientific checks', () => {
   })
 
   it('heterozygote advantage converges to non-zero allele frequency', () => {
-    const params = cloneParams(presets[2].params)
+    const params = cloneParams(balancingPreset.params)
     params.generations = 120
     const snapshots = runDeterministicSimulation(params)
 
@@ -59,7 +68,7 @@ describe('deterministic simulation scientific checks', () => {
   })
 
   it('treatment shift softens decline slope after transition', () => {
-    const params = cloneParams(presets[3].params)
+    const params = cloneParams(treatmentPreset.params)
     params.generations = 80
     const snapshots = runDeterministicSimulation(params)
     const t = params.treatmentShift.startsAtGeneration
@@ -76,7 +85,7 @@ describe('deterministic simulation scientific checks', () => {
   })
 
   it('population accounting remains exact in fixed-size mode', () => {
-    const params = cloneParams(presets[1].params)
+    const params = cloneParams(severePreset.params)
     params.generations = 60
     params.fixedPopulationSize = true
 
@@ -90,7 +99,7 @@ describe('deterministic simulation scientific checks', () => {
   })
 
   it('displayed prevalence and allele values match counts exactly', () => {
-    const params = cloneParams(presets[1].params)
+    const params = cloneParams(severePreset.params)
     params.generations = 40
     const snapshots = runDeterministicSimulation(params)
 

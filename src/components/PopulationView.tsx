@@ -1,9 +1,10 @@
 import { motion } from 'framer-motion'
 import { useMemo } from 'react'
-import type { GenerationSnapshot, Genotype } from '../sim/types'
+import type { GenerationSnapshot, Genotype, GenotypeLabelSet } from '../sim/types'
 
 interface PopulationViewProps {
   snapshot: GenerationSnapshot
+  genotypeLabels: GenotypeLabelSet
 }
 
 function buildDotSample(snapshot: GenerationSnapshot, dotCount: number): Genotype[] {
@@ -24,7 +25,7 @@ const colorByGenotype: Record<Genotype, string> = {
   aa: 'bg-rose-400',
 }
 
-export function PopulationView({ snapshot }: PopulationViewProps) {
+export function PopulationView({ snapshot, genotypeLabels }: PopulationViewProps) {
   const dots = useMemo(() => buildDotSample(snapshot, 264), [snapshot])
 
   return (
@@ -52,15 +53,15 @@ export function PopulationView({ snapshot }: PopulationViewProps) {
       <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-300">
         <span className="flex items-center gap-2">
           <i className="h-2.5 w-2.5 rounded-full bg-slate-400" />
-          AA (unaffected)
+          {genotypeLabels.AA}
         </span>
         <span className="flex items-center gap-2">
           <i className="h-2.5 w-2.5 rounded-full bg-indigo-300" />
-          Aa (carrier)
+          {genotypeLabels.Aa}
         </span>
         <span className="flex items-center gap-2">
           <i className="h-2.5 w-2.5 rounded-full bg-rose-400" />
-          aa (affected)
+          {genotypeLabels.aa}
         </span>
       </div>
     </div>
