@@ -223,6 +223,31 @@ function applyEndogamyBlend(
   })
 }
 
+/**
+ * Apply symmetric per-allele mutation, then reconstruct genotype frequencies
+ * under Hardy-Weinberg expectations for the post-mutation allele frequency.
+ *
+ * This is the standard textbook treatment of mutation-selection balance at a
+ * single locus: each A-allele mutates to a with probability mu and vice versa.
+ */
+function applyMutation(
+  frequencies: GenotypeFrequencies,
+  mutationRate: number,
+): GenotypeFrequencies {
+  const mu = clamp(mutationRate, 0, 0.5)
+  if (mu <= 0) return frequencies
+
+  const q = clamp(frequencies.aa + frequencies.Aa * 0.5, 0, 1)
+  const qNext = q * (1 - mu) + (1 - q) * mu
+  const pNext = 1 - qNext
+
+  return normalizeFrequencies({
+    AA: pNext * pNext,
+    Aa: 2 * pNext * qNext,
+    aa: qNext * qNext,
+  })
+}
+
 function calculateNextPopulationSize(
   params: SimulationParams,
   currentPopulation: number,
@@ -279,13 +304,17 @@ export function simulateNextGeneration(
     offspringRandomized,
     params.modifiers.endogamyBias,
   )
+  const offspringMutated = applyMutation(
+    offspringBlended,
+    params.mutationRate ?? 0,
+  )
 
   const nextPopulation = calculateNextPopulationSize(
     params,
     current.population,
     reproductiveTotal,
   )
-  const nextCounts = roundCountsFromFrequencies(nextPopulation, offspringBlended)
+  const nextCounts = roundCountsFromFrequencies(nextPopulation, offspringMutated)
 
   return createSnapshot(current.generation + 1, nextCounts, nextPopulation)
 }

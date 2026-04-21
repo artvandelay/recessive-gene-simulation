@@ -16,6 +16,7 @@ function baseParams(): SimulationParams {
     initialAlleleFrequency: 0.12,
     fixedPopulationSize: true,
     averageChildrenPerCouple: 2.1,
+    mutationRate: 0,
     survivalToReproductiveAge: {
       AA: 1,
       Aa: 1,
@@ -47,6 +48,7 @@ function makePreset(
   key: string,
   title: string,
   description: string,
+  highlights: string[],
   params: SimulationParams,
 ): ScenarioPreset {
   return {
@@ -54,40 +56,63 @@ function makePreset(
     key,
     title,
     description,
+    highlights,
     params: cloneParams(params),
   }
 }
 
-const standardControls: ControlKey[] = [
+/**
+ * Full control set shared by most profiles. A profile's `visibleControls`
+ * should be derived from this by subtracting controls that don't apply to
+ * the biology (e.g. malaria for hereditary spherocytosis).
+ */
+const fullControls: ControlKey[] = [
   'initialPopulation',
   'initialAlleleFrequency',
   'carrierPairingBias',
   'consanguinityBoost',
   'endogamyBias',
+  'survivalWAA',
+  'survivalWAa',
   'survivalWaa',
+  'fertilityFAA',
+  'fertilityFAa',
   'fertilityFaa',
+  'mutationRate',
   'malariaPressure',
   'heterozygoteAdvantageStrength',
   'treatmentShiftEnabled',
+  'treatmentStartGeneration',
+  'treatmentImprovedSurvival',
+  'treatmentImprovedFertility',
   'generations',
   'fixedPopulationSize',
   'averageChildrenPerCouple',
 ]
 
-const noMalariaControls = standardControls.filter(
+const withoutMalaria: ControlKey[] = fullControls.filter(
   (control) =>
     control !== 'malariaPressure' && control !== 'heterozygoteAdvantageStrength',
 )
 
-const noTreatmentControls = standardControls.filter(
-  (control) => control !== 'treatmentShiftEnabled',
+const withoutTreatment: ControlKey[] = fullControls.filter(
+  (control) =>
+    control !== 'treatmentShiftEnabled' &&
+    control !== 'treatmentStartGeneration' &&
+    control !== 'treatmentImprovedSurvival' &&
+    control !== 'treatmentImprovedFertility',
 )
+
+// ---------------------------------------------------------------------------
+// Presets exported by key (used by tests)
+// ---------------------------------------------------------------------------
 
 const genericNeutral = makePreset(
   'generic-severe',
   'neutral-recessive',
   'Neutral Recessive',
-  'No genotype-specific selection. Allele frequency should stay near-constant.',
+  'No genotype-specific selection. Allele frequency drifts only if N is small.',
+  ['Selection OFF', 'No malaria', 'Mutation OFF'],
   {
     ...baseParams(),
     survivalToReproductiveAge: { AA: 1, Aa: 1, aa: 1 },
@@ -100,6 +125,7 @@ const genericSevere = makePreset(
   'severe-recessive',
   'Severe Recessive Disease',
   'Strong selection against affected genotype with near-zero fertility.',
+  ['Strong selection on aa', 'No malaria', 'No treatment'],
   {
     ...baseParams(),
     survivalToReproductiveAge: { AA: 1, Aa: 1, aa: 0.05 },
@@ -107,11 +133,43 @@ const genericSevere = makePreset(
   },
 )
 
+const genericMutationBalance = makePreset(
+  'generic-severe',
+  'mutation-selection-balance',
+  'Mutation-Selection Balance',
+  'Mutation refills the allele faster than selection can remove it, creating a non-zero equilibrium.',
+  ['Strong selection on aa', 'Mutation ON (mu=0.001)'],
+  {
+    ...baseParams(),
+    initialAlleleFrequency: 0.02,
+    survivalToReproductiveAge: { AA: 1, Aa: 1, aa: 0.05 },
+    fertilityMultiplier: { AA: 1, Aa: 1, aa: 0.05 },
+    mutationRate: 0.001,
+    generations: 150,
+  },
+)
+
+const genericDrift = makePreset(
+  'generic-severe',
+  'small-population-drift',
+  'Small Population Drift',
+  'Tiny N lets genotype counts bounce around even with neutral selection.',
+  ['Tiny N=120', 'Selection OFF', 'Drift-dominated'],
+  {
+    ...baseParams(),
+    initialPopulation: 120,
+    survivalToReproductiveAge: { AA: 1, Aa: 1, aa: 1 },
+    fertilityMultiplier: { AA: 1, Aa: 1, aa: 1 },
+    generations: 120,
+  },
+)
+
 const sickleBalancing = makePreset(
   'sickle-cell',
   'sickle-balancing',
   'Sickle-like Balancing Selection',
-  'Malaria pressure favors heterozygotes and sustains a non-zero allele frequency.',
+  'Malaria pressure favors HbAS carriers and sustains a non-zero HbS allele frequency.',
+  ['Malaria ON', 'Strong het advantage', 'aa survival low'],
   {
     ...baseParams(),
     survivalToReproductiveAge: { AA: 0.9, Aa: 1, aa: 0.2 },
@@ -126,11 +184,52 @@ const sickleBalancing = makePreset(
   },
 )
 
+const sickleLowMalaria = makePreset(
+  'sickle-cell',
+  'sickle-low-malaria',
+  'Sickle in Low-Malaria Setting',
+  'Weak carrier advantage cannot offset disease burden; allele declines over generations.',
+  ['Malaria ON (weak)', 'Selection on aa'],
+  {
+    ...baseParams(),
+    survivalToReproductiveAge: { AA: 1, Aa: 1, aa: 0.2 },
+    fertilityMultiplier: { AA: 1, Aa: 1, aa: 0.45 },
+    modifiers: {
+      malariaPressure: true,
+      heterozygoteAdvantageStrength: 0.2,
+      carrierPairingBias: 0,
+      consanguinityBoost: 0,
+      endogamyBias: 0,
+    },
+  },
+)
+
+const sickleConsanguinity = makePreset(
+  'sickle-cell',
+  'sickle-consanguinity',
+  'Sickle with Consanguinity',
+  'Inbreeding-like pairing raises HbSS births even while malaria sustains the HbS allele.',
+  ['Malaria ON', 'Consanguinity HIGH', 'aa births up'],
+  {
+    ...baseParams(),
+    survivalToReproductiveAge: { AA: 0.92, Aa: 1, aa: 0.2 },
+    fertilityMultiplier: { AA: 1, Aa: 1, aa: 0.5 },
+    modifiers: {
+      malariaPressure: true,
+      heterozygoteAdvantageStrength: 0.55,
+      carrierPairingBias: 0.12,
+      consanguinityBoost: 0.15,
+      endogamyBias: 0.2,
+    },
+  },
+)
+
 const thalTreatment = makePreset(
   'beta-thal-major',
   'thal-treatment',
   'Thalassemia + Treatment Improvement',
-  'Affected survival and fertility improve after treatment era transition.',
+  'Affected survival and fertility improve after treatment era begins at generation 11.',
+  ['Treatment ON at gen 11', 'aa rescue'],
   {
     ...baseParams(),
     survivalToReproductiveAge: { AA: 1, Aa: 1, aa: 0.1 },
@@ -143,6 +242,215 @@ const thalTreatment = makePreset(
     },
   },
 )
+
+const thalUntreated = makePreset(
+  'beta-thal-major',
+  'thal-untreated',
+  'Thalassemia Without Treatment Transition',
+  'Persistent strong selection drives faster decline of severe genotype.',
+  ['Strong selection on aa', 'No treatment'],
+  {
+    ...baseParams(),
+    survivalToReproductiveAge: { AA: 1, Aa: 1, aa: 0.08 },
+    fertilityMultiplier: { AA: 1, Aa: 1, aa: 0.08 },
+  },
+)
+
+const thalMutationBalance = makePreset(
+  'beta-thal-major',
+  'thal-mutation-balance',
+  'Thalassemia with Mutation Input',
+  'Mutation refills rare alleles and sets a long-run floor under selection.',
+  ['Strong selection', 'Mutation ON (mu=0.0005)'],
+  {
+    ...baseParams(),
+    initialAlleleFrequency: 0.04,
+    survivalToReproductiveAge: { AA: 1, Aa: 1, aa: 0.08 },
+    fertilityMultiplier: { AA: 1, Aa: 1, aa: 0.08 },
+    mutationRate: 0.0005,
+    generations: 160,
+  },
+)
+
+const hsDominantStable = makePreset(
+  'hereditary-spherocytosis',
+  'hs-dominant-stable',
+  'Dominant Burden with Mild Selection',
+  'Heterozygous burden persists when selection on Aa and aa is modest.',
+  ['Dominant burden on Aa', 'Mild selection'],
+  {
+    ...baseParams(),
+    initialAlleleFrequency: 0.08,
+    survivalToReproductiveAge: { AA: 1, Aa: 0.82, aa: 0.45 },
+    fertilityMultiplier: { AA: 1, Aa: 0.9, aa: 0.4 },
+  },
+)
+
+const hsImprovedManagement = makePreset(
+  'hereditary-spherocytosis',
+  'hs-improved-management',
+  'Dominant Burden with Care Improvement',
+  'Clinical care reduces selection against severe-burden dominant genotypes over time.',
+  ['Dominant burden', 'Treatment ON at gen 12'],
+  {
+    ...baseParams(),
+    initialAlleleFrequency: 0.08,
+    survivalToReproductiveAge: { AA: 1, Aa: 0.82, aa: 0.45 },
+    fertilityMultiplier: { AA: 1, Aa: 0.9, aa: 0.4 },
+    treatmentShift: {
+      enabled: true,
+      startsAtGeneration: 12,
+      improvedSurvivalAA: 0.7,
+      improvedFertilityAA: 0.62,
+    },
+  },
+)
+
+const hsEndogamy = makePreset(
+  'hereditary-spherocytosis',
+  'hs-endogamy',
+  'Dominant Burden with Endogamy',
+  'Endogamy raises homozygous births and drags the allele down faster.',
+  ['Dominant burden', 'Endogamy HIGH'],
+  {
+    ...baseParams(),
+    initialAlleleFrequency: 0.08,
+    survivalToReproductiveAge: { AA: 1, Aa: 0.82, aa: 0.45 },
+    fertilityMultiplier: { AA: 1, Aa: 0.9, aa: 0.4 },
+    modifiers: {
+      malariaPressure: false,
+      heterozygoteAdvantageStrength: 0,
+      carrierPairingBias: 0.1,
+      consanguinityBoost: 0.1,
+      endogamyBias: 0.3,
+    },
+  },
+)
+
+const g6pdNeutral = makePreset(
+  'g6pd-deficiency',
+  'g6pd-neutral',
+  'X-linked Approx, Low Selection',
+  'Carrier-like states remain common while high-burden state stays lower.',
+  ['Weak selection', 'No malaria'],
+  {
+    ...baseParams(),
+    initialAlleleFrequency: 0.16,
+    survivalToReproductiveAge: { AA: 1, Aa: 0.97, aa: 0.78 },
+    fertilityMultiplier: { AA: 1, Aa: 0.98, aa: 0.86 },
+  },
+)
+
+const g6pdMalariaContext = makePreset(
+  'g6pd-deficiency',
+  'g6pd-malaria-context',
+  'X-linked Approx in Malaria Context',
+  'Environmental protection can maintain trait-associated variants.',
+  ['Malaria ON', 'Het advantage'],
+  {
+    ...baseParams(),
+    initialAlleleFrequency: 0.16,
+    survivalToReproductiveAge: { AA: 0.95, Aa: 1, aa: 0.75 },
+    fertilityMultiplier: { AA: 1, Aa: 1, aa: 0.84 },
+    modifiers: {
+      malariaPressure: true,
+      heterozygoteAdvantageStrength: 0.35,
+      carrierPairingBias: 0,
+      consanguinityBoost: 0,
+      endogamyBias: 0,
+    },
+  },
+)
+
+const g6pdDriftMalaria = makePreset(
+  'g6pd-deficiency',
+  'g6pd-drift-malaria',
+  'Small Population with Malaria',
+  'Limited N lets drift interact with weak balancing selection.',
+  ['Malaria ON', 'Small N=250', 'Drift + selection'],
+  {
+    ...baseParams(),
+    initialPopulation: 250,
+    initialAlleleFrequency: 0.16,
+    survivalToReproductiveAge: { AA: 0.95, Aa: 1, aa: 0.75 },
+    fertilityMultiplier: { AA: 1, Aa: 1, aa: 0.84 },
+    modifiers: {
+      malariaPressure: true,
+      heterozygoteAdvantageStrength: 0.35,
+      carrierPairingBias: 0,
+      consanguinityBoost: 0,
+      endogamyBias: 0,
+    },
+    generations: 150,
+  },
+)
+
+const hbscModerate = makePreset(
+  'hbsc',
+  'hbsc-moderate-burden',
+  'HbSC-like Moderate Burden',
+  'Compound heterozygous class carries burden but persists under weak malaria pressure.',
+  ['Malaria ON (weak)', 'Compound burden'],
+  {
+    ...baseParams(),
+    initialAlleleFrequency: 0.1,
+    survivalToReproductiveAge: { AA: 1, Aa: 0.84, aa: 0.35 },
+    fertilityMultiplier: { AA: 1, Aa: 0.88, aa: 0.42 },
+    modifiers: {
+      malariaPressure: true,
+      heterozygoteAdvantageStrength: 0.2,
+      carrierPairingBias: 0.02,
+      consanguinityBoost: 0,
+      endogamyBias: 0,
+    },
+  },
+)
+
+const hbscImproved = makePreset(
+  'hbsc',
+  'hbsc-improved-therapy',
+  'HbSC-like With Care Improvement',
+  'Care improvements reduce selection pressure against the higher-burden compound class.',
+  ['Malaria ON', 'Treatment ON at gen 12'],
+  {
+    ...baseParams(),
+    initialAlleleFrequency: 0.1,
+    survivalToReproductiveAge: { AA: 1, Aa: 0.84, aa: 0.35 },
+    fertilityMultiplier: { AA: 1, Aa: 0.88, aa: 0.42 },
+    modifiers: {
+      malariaPressure: true,
+      heterozygoteAdvantageStrength: 0.2,
+      carrierPairingBias: 0.02,
+      consanguinityBoost: 0,
+      endogamyBias: 0,
+    },
+    treatmentShift: {
+      enabled: true,
+      startsAtGeneration: 12,
+      improvedSurvivalAA: 0.65,
+      improvedFertilityAA: 0.6,
+    },
+  },
+)
+
+const hbscDriftOff = makePreset(
+  'hbsc',
+  'hbsc-malaria-off',
+  'HbSC-like Without Malaria',
+  'Remove the environmental support and the compound genotype declines steadily.',
+  ['Malaria OFF', 'Compound burden'],
+  {
+    ...baseParams(),
+    initialAlleleFrequency: 0.1,
+    survivalToReproductiveAge: { AA: 1, Aa: 0.84, aa: 0.35 },
+    fertilityMultiplier: { AA: 1, Aa: 0.88, aa: 0.42 },
+    generations: 140,
+  },
+)
+
+// ---------------------------------------------------------------------------
+// Disease profile registry
+// ---------------------------------------------------------------------------
 
 export const hematDiseaseProfiles: DiseaseProfile[] = [
   {
@@ -159,7 +467,7 @@ export const hematDiseaseProfiles: DiseaseProfile[] = [
       Aa: 'HbAS (trait)',
       aa: 'HbSS (disease)',
     },
-    visibleControls: noTreatmentControls,
+    visibleControls: withoutTreatment,
     tooltipOverrides: {
       malariaPressure: {
         label: 'Malaria pressure',
@@ -169,27 +477,7 @@ export const hematDiseaseProfiles: DiseaseProfile[] = [
           'If OFF, sickle allele tends to decline under disease burden; if ON with strong advantage, allele persists.',
       },
     },
-    scenarios: [
-      sickleBalancing,
-      makePreset(
-        'sickle-cell',
-        'sickle-low-malaria',
-        'Sickle in Low-Malaria Setting',
-        'Carrier advantage weakens and disease allele declines faster.',
-        {
-          ...baseParams(),
-          survivalToReproductiveAge: { AA: 1, Aa: 1, aa: 0.2 },
-          fertilityMultiplier: { AA: 1, Aa: 1, aa: 0.45 },
-          modifiers: {
-            malariaPressure: true,
-            heterozygoteAdvantageStrength: 0.2,
-            carrierPairingBias: 0,
-            consanguinityBoost: 0,
-            endogamyBias: 0,
-          },
-        },
-      ),
-    ],
+    scenarios: [sickleBalancing, sickleLowMalaria, sickleConsanguinity],
   },
   {
     key: 'beta-thal-major',
@@ -205,27 +493,8 @@ export const hematDiseaseProfiles: DiseaseProfile[] = [
       Aa: 'Beta-thal trait',
       aa: 'Beta-thal major',
     },
-    visibleControls: standardControls,
-    scenarios: [
-      thalTreatment,
-      makePreset(
-        'beta-thal-major',
-        'thal-untreated',
-        'Thalassemia Without Treatment Transition',
-        'Persistent strong selection drives faster decline of severe genotype.',
-        {
-          ...baseParams(),
-          survivalToReproductiveAge: { AA: 1, Aa: 1, aa: 0.08 },
-          fertilityMultiplier: { AA: 1, Aa: 1, aa: 0.08 },
-          treatmentShift: {
-            enabled: false,
-            startsAtGeneration: 11,
-            improvedSurvivalAA: 0.6,
-            improvedFertilityAA: 0.55,
-          },
-        },
-      ),
-    ],
+    visibleControls: fullControls,
+    scenarios: [thalTreatment, thalUntreated, thalMutationBalance],
   },
   {
     key: 'hereditary-spherocytosis',
@@ -245,45 +514,8 @@ export const hematDiseaseProfiles: DiseaseProfile[] = [
       carrierPrevalence: 'Heterozygous prevalence',
       affectedPrevalence: 'Severe genotype prevalence',
     },
-    visibleControls: noMalariaControls,
-    scenarios: [
-      makePreset(
-        'hereditary-spherocytosis',
-        'hs-dominant-stable',
-        'Dominant Burden with Mild Selection',
-        'Heterozygous burden persists when selection is modest.',
-        {
-          ...baseParams(),
-          initialAlleleFrequency: 0.08,
-          survivalToReproductiveAge: { AA: 1, Aa: 0.82, aa: 0.45 },
-          fertilityMultiplier: { AA: 1, Aa: 0.9, aa: 0.4 },
-          treatmentShift: {
-            enabled: false,
-            startsAtGeneration: 11,
-            improvedSurvivalAA: 0.6,
-            improvedFertilityAA: 0.55,
-          },
-        },
-      ),
-      makePreset(
-        'hereditary-spherocytosis',
-        'hs-improved-management',
-        'Dominant Burden with Care Improvement',
-        'Clinical care reduces selection against dominant-affected genotypes over time.',
-        {
-          ...baseParams(),
-          initialAlleleFrequency: 0.08,
-          survivalToReproductiveAge: { AA: 1, Aa: 0.82, aa: 0.45 },
-          fertilityMultiplier: { AA: 1, Aa: 0.9, aa: 0.4 },
-          treatmentShift: {
-            enabled: true,
-            startsAtGeneration: 12,
-            improvedSurvivalAA: 0.7,
-            improvedFertilityAA: 0.62,
-          },
-        },
-      ),
-    ],
+    visibleControls: withoutMalaria,
+    scenarios: [hsDominantStable, hsImprovedManagement, hsEndogamy],
   },
   {
     key: 'g6pd-deficiency',
@@ -303,40 +535,8 @@ export const hematDiseaseProfiles: DiseaseProfile[] = [
       carrierPrevalence: 'Carrier-like prevalence',
       affectedPrevalence: 'High-expression prevalence',
     },
-    visibleControls: noTreatmentControls,
-    scenarios: [
-      makePreset(
-        'g6pd-deficiency',
-        'g6pd-neutral',
-        'X-linked Approx, Low Selection',
-        'Carrier-like states remain common while high-burden state stays lower.',
-        {
-          ...baseParams(),
-          initialAlleleFrequency: 0.16,
-          survivalToReproductiveAge: { AA: 1, Aa: 0.97, aa: 0.78 },
-          fertilityMultiplier: { AA: 1, Aa: 0.98, aa: 0.86 },
-        },
-      ),
-      makePreset(
-        'g6pd-deficiency',
-        'g6pd-malaria-context',
-        'X-linked Approx in Malaria Context',
-        'Environmental protection can maintain trait-associated variants.',
-        {
-          ...baseParams(),
-          initialAlleleFrequency: 0.16,
-          survivalToReproductiveAge: { AA: 0.95, Aa: 1, aa: 0.75 },
-          fertilityMultiplier: { AA: 1, Aa: 1, aa: 0.84 },
-          modifiers: {
-            malariaPressure: true,
-            heterozygoteAdvantageStrength: 0.35,
-            carrierPairingBias: 0,
-            consanguinityBoost: 0,
-            endogamyBias: 0,
-          },
-        },
-      ),
-    ],
+    visibleControls: withoutTreatment,
+    scenarios: [g6pdNeutral, g6pdMalariaContext, g6pdDriftMalaria],
   },
   {
     key: 'hbsc',
@@ -356,69 +556,29 @@ export const hematDiseaseProfiles: DiseaseProfile[] = [
       carrierPrevalence: 'Compound/trait prevalence',
       affectedPrevalence: 'Severe prevalence',
     },
-    visibleControls: standardControls,
-    scenarios: [
-      makePreset(
-        'hbsc',
-        'hbsc-moderate-burden',
-        'HbSC-like Moderate Burden',
-        'Compound heterozygous class carries substantial burden but persists.',
-        {
-          ...baseParams(),
-          initialAlleleFrequency: 0.1,
-          survivalToReproductiveAge: { AA: 1, Aa: 0.84, aa: 0.35 },
-          fertilityMultiplier: { AA: 1, Aa: 0.88, aa: 0.42 },
-          modifiers: {
-            malariaPressure: true,
-            heterozygoteAdvantageStrength: 0.2,
-            carrierPairingBias: 0.02,
-            consanguinityBoost: 0,
-            endogamyBias: 0,
-          },
-        },
-      ),
-      makePreset(
-        'hbsc',
-        'hbsc-improved-therapy',
-        'HbSC-like With Care Improvement',
-        'Care improvements reduce selection pressure against higher-burden class.',
-        {
-          ...baseParams(),
-          initialAlleleFrequency: 0.1,
-          survivalToReproductiveAge: { AA: 1, Aa: 0.84, aa: 0.35 },
-          fertilityMultiplier: { AA: 1, Aa: 0.88, aa: 0.42 },
-          modifiers: {
-            malariaPressure: true,
-            heterozygoteAdvantageStrength: 0.2,
-            carrierPairingBias: 0.02,
-            consanguinityBoost: 0,
-            endogamyBias: 0,
-          },
-          treatmentShift: {
-            enabled: true,
-            startsAtGeneration: 12,
-            improvedSurvivalAA: 0.65,
-            improvedFertilityAA: 0.6,
-          },
-        },
-      ),
-    ],
+    visibleControls: fullControls,
+    scenarios: [hbscModerate, hbscImproved, hbscDriftOff],
   },
   {
     key: 'generic-severe',
     category: 'hematology',
-    name: 'Generic Severe Recessive',
-    shortDescription: 'Reference teaching profile for severe autosomal recessive dynamics.',
+    name: 'Generic Teaching Profile',
+    shortDescription: 'Reference teaching profile for isolating one force at a time.',
     inheritanceMode: 'autosomal-recessive',
     focusMessage:
-      'Use this profile as a clean baseline before switching to disease-specific hemat contexts.',
+      'Use this profile as a clean baseline to compare selection, drift, and mutation-selection balance.',
     genotypeLabels: {
       AA: 'Unaffected',
       Aa: 'Carrier',
       aa: 'Affected',
     },
-    visibleControls: standardControls,
-    scenarios: [genericNeutral, genericSevere],
+    visibleControls: fullControls,
+    scenarios: [
+      genericNeutral,
+      genericSevere,
+      genericMutationBalance,
+      genericDrift,
+    ],
   },
 ]
 

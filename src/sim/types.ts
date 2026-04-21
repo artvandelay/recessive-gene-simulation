@@ -39,6 +39,7 @@ export interface SimulationParams {
   initialAlleleFrequency: number
   fixedPopulationSize: boolean
   averageChildrenPerCouple: number
+  mutationRate: number
   survivalToReproductiveAge: FitnessConfig
   fertilityMultiplier: FitnessConfig
   modifiers: SimulationModifiers
@@ -59,6 +60,7 @@ export interface ScenarioPreset {
   diseaseKey: string
   title: string
   description: string
+  highlights: string[]
   params: SimulationParams
 }
 
@@ -86,11 +88,19 @@ export type ControlKey =
   | 'carrierPairingBias'
   | 'consanguinityBoost'
   | 'endogamyBias'
+  | 'survivalWAA'
+  | 'survivalWAa'
   | 'survivalWaa'
+  | 'fertilityFAA'
+  | 'fertilityFAa'
   | 'fertilityFaa'
+  | 'mutationRate'
   | 'malariaPressure'
   | 'heterozygoteAdvantageStrength'
   | 'treatmentShiftEnabled'
+  | 'treatmentStartGeneration'
+  | 'treatmentImprovedSurvival'
+  | 'treatmentImprovedFertility'
   | 'generations'
   | 'fixedPopulationSize'
   | 'averageChildrenPerCouple'
