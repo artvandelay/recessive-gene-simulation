@@ -65,6 +65,7 @@ Project layout:
 ```
 src/
   components/    # UI: ControlPanel, PopulationView, ScenarioCard, StatsPanel, TimelineControls
+  hooks/         # Reusable hooks (e.g. useGenerationPlayer for playback)
   sim/           # Pure simulation: engine.ts, diseases.ts, presets.ts, controlSchema.ts, types.ts
 ```
 

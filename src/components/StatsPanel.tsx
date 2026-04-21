@@ -1,125 +1,99 @@
 import type {
   GenerationSnapshot,
+  Genotype,
   GenotypeLabelSet,
   MetricLabelSet,
 } from '../sim/types'
 
 interface StatsPanelProps {
   current: GenerationSnapshot
-  history: GenerationSnapshot[]
+  previous: GenerationSnapshot | null
   genotypeLabels: GenotypeLabelSet
   metricLabels?: Partial<MetricLabelSet>
 }
 
-function Sparkline({
-  values,
-  stroke,
-}: {
-  values: number[]
-  stroke: string
-}) {
-  if (values.length <= 1) return null
-
-  const width = 250
-  const height = 80
-  const max = Math.max(...values, 0.0001)
-  const min = Math.min(...values, 0)
-  const range = Math.max(max - min, 0.0001)
-
-  const points = values
-    .map((value, index) => {
-      const x = (index / (values.length - 1)) * width
-      const y = height - ((value - min) / range) * height
-      return `${x},${y}`
-    })
-    .join(' ')
-
-  return (
-    <polyline
-      fill="none"
-      stroke={stroke}
-      strokeWidth="2"
-      points={points}
-      strokeLinecap="round"
-    />
-  )
-}
-
-function metricRows(
-  snapshot: GenerationSnapshot,
-  metricLabels?: Partial<MetricLabelSet>,
-) {
-  return [
-    {
-      label: 'Allele frequency q',
-      value: snapshot.alleleFrequencyQ.toFixed(4),
-    },
-    {
-      label: metricLabels?.carrierPrevalence ?? 'Carrier prevalence',
-      value: `${(snapshot.carrierPrevalence * 100).toFixed(2)}%`,
-    },
-    {
-      label: metricLabels?.affectedPrevalence ?? 'Affected prevalence',
-      value: `${(snapshot.affectedPrevalence * 100).toFixed(2)}%`,
-    },
-  ]
-}
+const GENOTYPE_ORDER: readonly Genotype[] = ['AA', 'Aa', 'aa']
 
 export function StatsPanel({
   current,
-  history,
+  previous,
   genotypeLabels,
   metricLabels,
 }: StatsPanelProps) {
-  const affectedSeries = history.map((item) => item.affectedPrevalence)
-  const carrierSeries = history.map((item) => item.carrierPrevalence)
-  const carrierLabel = metricLabels?.carrierPrevalence ?? 'Carrier prevalence'
-  const affectedLabel = metricLabels?.affectedPrevalence ?? 'Affected prevalence'
+  const delta = previous
+    ? formatDelta(current.population - previous.population)
+    : null
+
+  const metrics = [
+    { label: 'Allele frequency q', value: current.alleleFrequencyQ.toFixed(4) },
+    {
+      label: metricLabels?.carrierPrevalence ?? 'Carrier prevalence',
+      value: formatPercent(current.carrierPrevalence),
+    },
+    {
+      label: metricLabels?.affectedPrevalence ?? 'Affected prevalence',
+      value: formatPercent(current.affectedPrevalence),
+    },
+  ]
 
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3">
       <h3 className="text-sm font-semibold text-slate-200">Live Counters</h3>
 
-      <div className="mt-3 space-y-2 text-sm">
-        <div className="flex items-center justify-between text-slate-300">
-          <span>{genotypeLabels.AA}</span>
+      <div className="mt-3 flex items-baseline justify-between text-sm text-slate-300">
+        <span>Population N</span>
+        <span className="flex items-baseline gap-2">
           <span className="font-mono text-slate-100">
-            {current.counts.AA.toLocaleString()}
+            {current.population.toLocaleString()}
           </span>
-        </div>
-        <div className="flex items-center justify-between text-slate-300">
-          <span>{genotypeLabels.Aa}</span>
-          <span className="font-mono text-slate-100">
-            {current.counts.Aa.toLocaleString()}
-          </span>
-        </div>
-        <div className="flex items-center justify-between text-slate-300">
-          <span>{genotypeLabels.aa}</span>
-          <span className="font-mono text-slate-100">
-            {current.counts.aa.toLocaleString()}
-          </span>
-        </div>
+          {delta ? (
+            <span className={`font-mono text-xs ${delta.className}`}>
+              {delta.label}
+            </span>
+          ) : null}
+        </span>
       </div>
 
-      <div className="mt-4 space-y-2 rounded-lg border border-slate-800 bg-slate-900/50 p-2">
-        {metricRows(current, metricLabels).map((metric) => (
+      <dl className="mt-3 space-y-2 border-t border-slate-800 pt-3 text-sm">
+        {GENOTYPE_ORDER.map((genotype) => (
+          <div
+            key={genotype}
+            className="flex items-center justify-between text-slate-300"
+          >
+            <dt>{genotypeLabels[genotype]}</dt>
+            <dd className="font-mono text-slate-100">
+              {current.counts[genotype].toLocaleString()}
+            </dd>
+          </div>
+        ))}
+      </dl>
+
+      <dl className="mt-4 space-y-2 rounded-lg border border-slate-800 bg-slate-900/50 p-2">
+        {metrics.map((metric) => (
           <div
             key={metric.label}
             className="flex items-center justify-between text-xs text-slate-300"
           >
-            <span>{metric.label}</span>
-            <span className="font-mono text-slate-100">{metric.value}</span>
+            <dt>{metric.label}</dt>
+            <dd className="font-mono text-slate-100">{metric.value}</dd>
           </div>
         ))}
-      </div>
-
-      <p className="mt-4 text-xs text-slate-300">
-        Trend preview ({carrierLabel} vs {affectedLabel})
-      </p>
-      <svg viewBox="0 0 250 80" className="mt-2 h-24 w-full">
-        <Sparkline values={carrierSeries} stroke="#a5b4fc" />
-        <Sparkline values={affectedSeries} stroke="#fb7185" />
-      </svg>
+      </dl>
     </div>
   )
+}
+
+function formatDelta(delta: number): { label: string; className: string } {
+  if (delta === 0) return { label: '±0', className: 'text-slate-400' }
+  if (delta > 0) {
+    return {
+      label: `+${delta.toLocaleString()}`,
+      className: 'text-emerald-300',
+    }
+  }
+  return { label: delta.toLocaleString(), className: 'text-rose-300' }
+}
+
+function formatPercent(value: number): string {
+  return `${(value * 100).toFixed(2)}%`
 }

@@ -6,7 +6,15 @@ import {
   type ControlSectionId,
   type ControlSpec,
 } from '../sim/controlSchema'
-import type { ControlKey, DiseaseProfile, ParamInfo, SimulationParams } from '../sim/types'
+import type {
+  ControlKey,
+  DiseaseProfile,
+  Genotype,
+  ParamInfo,
+  SimulationModifiers,
+  SimulationParams,
+  TreatmentShiftConfig,
+} from '../sim/types'
 
 interface ControlPanelProps {
   params: SimulationParams
@@ -15,6 +23,118 @@ interface ControlPanelProps {
   onParamsChange: Dispatch<SetStateAction<SimulationParams>>
   onReset: () => void
 }
+
+// ---------------------------------------------------------------------------
+// Accessors: one table maps every ControlKey to a get/set lens over params.
+// Replaces the previous 160 lines of parallel switch statements.
+// ---------------------------------------------------------------------------
+
+type ControlValue = number | boolean
+
+interface Accessor {
+  get: (params: SimulationParams) => ControlValue
+  set: (params: SimulationParams, value: ControlValue) => SimulationParams
+}
+
+const root = <K extends keyof SimulationParams>(key: K): Accessor => ({
+  get: (p) => p[key] as ControlValue,
+  set: (p, v) => ({ ...p, [key]: v }),
+})
+
+const modifier = <K extends keyof SimulationModifiers>(key: K): Accessor => ({
+  get: (p) => p.modifiers[key] as ControlValue,
+  set: (p, v) => ({ ...p, modifiers: { ...p.modifiers, [key]: v } }),
+})
+
+const survival = (genotype: Genotype): Accessor => ({
+  get: (p) => p.survivalToReproductiveAge[genotype],
+  set: (p, v) => ({
+    ...p,
+    survivalToReproductiveAge: {
+      ...p.survivalToReproductiveAge,
+      [genotype]: v,
+    },
+  }),
+})
+
+const fertility = (genotype: Genotype): Accessor => ({
+  get: (p) => p.fertilityMultiplier[genotype],
+  set: (p, v) => ({
+    ...p,
+    fertilityMultiplier: { ...p.fertilityMultiplier, [genotype]: v },
+  }),
+})
+
+const treatment = <K extends keyof TreatmentShiftConfig>(key: K): Accessor => ({
+  get: (p) => p.treatmentShift[key] as ControlValue,
+  set: (p, v) => ({
+    ...p,
+    treatmentShift: { ...p.treatmentShift, [key]: v },
+  }),
+})
+
+const ACCESSORS: Record<ControlKey, Accessor> = {
+  initialPopulation: root('initialPopulation'),
+  initialAlleleFrequency: root('initialAlleleFrequency'),
+  fixedPopulationSize: root('fixedPopulationSize'),
+  averageChildrenPerCouple: root('averageChildrenPerCouple'),
+  mutationRate: root('mutationRate'),
+  generations: root('generations'),
+
+  carrierPairingBias: modifier('carrierPairingBias'),
+  consanguinityBoost: modifier('consanguinityBoost'),
+  endogamyBias: modifier('endogamyBias'),
+  malariaPressure: modifier('malariaPressure'),
+  heterozygoteAdvantageStrength: modifier('heterozygoteAdvantageStrength'),
+
+  survivalWAA: survival('AA'),
+  survivalWAa: survival('Aa'),
+  survivalWaa: survival('aa'),
+  fertilityFAA: fertility('AA'),
+  fertilityFAa: fertility('Aa'),
+  fertilityFaa: fertility('aa'),
+
+  treatmentShiftEnabled: treatment('enabled'),
+  treatmentStartGeneration: treatment('startsAtGeneration'),
+  treatmentImprovedSurvival: treatment('improvedSurvivalAA'),
+  treatmentImprovedFertility: treatment('improvedFertilityAA'),
+}
+
+const readControl = (params: SimulationParams, key: ControlKey) =>
+  ACCESSORS[key].get(params)
+
+const writeControl = (
+  params: SimulationParams,
+  key: ControlKey,
+  value: ControlValue,
+): SimulationParams => ACCESSORS[key].set(params, value)
+
+function isControlModified(
+  params: SimulationParams,
+  baseline: SimulationParams,
+  key: ControlKey,
+): boolean {
+  const current = readControl(params, key)
+  const original = readControl(baseline, key)
+  if (typeof current === 'number' && typeof original === 'number') {
+    return Math.abs(current - original) > 1e-9
+  }
+  return current !== original
+}
+
+function isControlVisible(
+  spec: ControlSpec,
+  params: SimulationParams,
+  visible: Set<ControlKey>,
+): boolean {
+  if (!visible.has(spec.key)) return false
+  if (!spec.requiresControl) return true
+  return Boolean(readControl(params, spec.requiresControl))
+}
+
+// ---------------------------------------------------------------------------
+// Presentational pieces
+// ---------------------------------------------------------------------------
 
 function Section({
   title,
@@ -88,7 +208,7 @@ function InfoBubble({ info }: { info: ParamInfo }) {
   )
 }
 
-function LabelWithInfo({
+function ControlLabel({
   label,
   info,
   modified,
@@ -112,309 +232,109 @@ function LabelWithInfo({
   )
 }
 
-function formatNumericValue(value: number, decimals: number | undefined): string {
-  const places = decimals ?? 2
-  return value.toFixed(places)
+// ---------------------------------------------------------------------------
+// Input controls. Each variant is a small, focused component.
+// ---------------------------------------------------------------------------
+
+interface ControlInputProps {
+  spec: ControlSpec
+  value: ControlValue
+  info: ParamInfo
+  modified: boolean
+  onChange: (value: ControlValue) => void
 }
 
-function getControlValue(params: SimulationParams, control: ControlKey): number | boolean {
-  switch (control) {
-    case 'initialPopulation':
-      return params.initialPopulation
-    case 'initialAlleleFrequency':
-      return params.initialAlleleFrequency
-    case 'carrierPairingBias':
-      return params.modifiers.carrierPairingBias
-    case 'consanguinityBoost':
-      return params.modifiers.consanguinityBoost
-    case 'endogamyBias':
-      return params.modifiers.endogamyBias
-    case 'survivalWAA':
-      return params.survivalToReproductiveAge.AA
-    case 'survivalWAa':
-      return params.survivalToReproductiveAge.Aa
-    case 'survivalWaa':
-      return params.survivalToReproductiveAge.aa
-    case 'fertilityFAA':
-      return params.fertilityMultiplier.AA
-    case 'fertilityFAa':
-      return params.fertilityMultiplier.Aa
-    case 'fertilityFaa':
-      return params.fertilityMultiplier.aa
-    case 'mutationRate':
-      return params.mutationRate
-    case 'malariaPressure':
-      return params.modifiers.malariaPressure
-    case 'heterozygoteAdvantageStrength':
-      return params.modifiers.heterozygoteAdvantageStrength
-    case 'treatmentShiftEnabled':
-      return params.treatmentShift.enabled
-    case 'treatmentStartGeneration':
-      return params.treatmentShift.startsAtGeneration
-    case 'treatmentImprovedSurvival':
-      return params.treatmentShift.improvedSurvivalAA
-    case 'treatmentImprovedFertility':
-      return params.treatmentShift.improvedFertilityAA
-    case 'generations':
-      return params.generations
-    case 'fixedPopulationSize':
-      return params.fixedPopulationSize
-    case 'averageChildrenPerCouple':
-      return params.averageChildrenPerCouple
-  }
-}
-
-function setControlValue(
-  state: SimulationParams,
-  control: ControlKey,
-  value: number | boolean,
-): SimulationParams {
-  switch (control) {
-    case 'initialPopulation':
-      return { ...state, initialPopulation: Number(value) }
-    case 'initialAlleleFrequency':
-      return { ...state, initialAlleleFrequency: Number(value) }
-    case 'carrierPairingBias':
-      return {
-        ...state,
-        modifiers: { ...state.modifiers, carrierPairingBias: Number(value) },
-      }
-    case 'consanguinityBoost':
-      return {
-        ...state,
-        modifiers: { ...state.modifiers, consanguinityBoost: Number(value) },
-      }
-    case 'endogamyBias':
-      return {
-        ...state,
-        modifiers: { ...state.modifiers, endogamyBias: Number(value) },
-      }
-    case 'survivalWAA':
-      return {
-        ...state,
-        survivalToReproductiveAge: {
-          ...state.survivalToReproductiveAge,
-          AA: Number(value),
-        },
-      }
-    case 'survivalWAa':
-      return {
-        ...state,
-        survivalToReproductiveAge: {
-          ...state.survivalToReproductiveAge,
-          Aa: Number(value),
-        },
-      }
-    case 'survivalWaa':
-      return {
-        ...state,
-        survivalToReproductiveAge: {
-          ...state.survivalToReproductiveAge,
-          aa: Number(value),
-        },
-      }
-    case 'fertilityFAA':
-      return {
-        ...state,
-        fertilityMultiplier: { ...state.fertilityMultiplier, AA: Number(value) },
-      }
-    case 'fertilityFAa':
-      return {
-        ...state,
-        fertilityMultiplier: { ...state.fertilityMultiplier, Aa: Number(value) },
-      }
-    case 'fertilityFaa':
-      return {
-        ...state,
-        fertilityMultiplier: { ...state.fertilityMultiplier, aa: Number(value) },
-      }
-    case 'mutationRate':
-      return { ...state, mutationRate: Number(value) }
-    case 'malariaPressure':
-      return {
-        ...state,
-        modifiers: { ...state.modifiers, malariaPressure: Boolean(value) },
-      }
-    case 'heterozygoteAdvantageStrength':
-      return {
-        ...state,
-        modifiers: {
-          ...state.modifiers,
-          heterozygoteAdvantageStrength: Number(value),
-        },
-      }
-    case 'treatmentShiftEnabled':
-      return {
-        ...state,
-        treatmentShift: { ...state.treatmentShift, enabled: Boolean(value) },
-      }
-    case 'treatmentStartGeneration':
-      return {
-        ...state,
-        treatmentShift: {
-          ...state.treatmentShift,
-          startsAtGeneration: Number(value),
-        },
-      }
-    case 'treatmentImprovedSurvival':
-      return {
-        ...state,
-        treatmentShift: {
-          ...state.treatmentShift,
-          improvedSurvivalAA: Number(value),
-        },
-      }
-    case 'treatmentImprovedFertility':
-      return {
-        ...state,
-        treatmentShift: {
-          ...state.treatmentShift,
-          improvedFertilityAA: Number(value),
-        },
-      }
-    case 'generations':
-      return { ...state, generations: Number(value) }
-    case 'fixedPopulationSize':
-      return { ...state, fixedPopulationSize: Boolean(value) }
-    case 'averageChildrenPerCouple':
-      return { ...state, averageChildrenPerCouple: Number(value) }
-  }
-}
-
-function resetControlFromBaseline(
-  state: SimulationParams,
-  baseline: SimulationParams,
-  control: ControlKey,
-): SimulationParams {
-  return setControlValue(state, control, getControlValue(baseline, control))
-}
-
-function isControlModified(
-  params: SimulationParams,
-  baseline: SimulationParams,
-  control: ControlKey,
-): boolean {
-  const current = getControlValue(params, control)
-  const original = getControlValue(baseline, control)
-  if (typeof current === 'number' && typeof original === 'number') {
-    return Math.abs(current - original) > 1e-9
-  }
-  return current !== original
-}
-
-function isControlVisible(
-  spec: ControlSpec,
-  params: SimulationParams,
-  visible: Set<ControlKey>,
-): boolean {
-  if (!visible.has(spec.key)) return false
-  if (!spec.requiresControl) return true
-  const gate = getControlValue(params, spec.requiresControl)
-  return Boolean(gate)
-}
-
-function renderControl(
-  control: ControlSpec,
-  params: SimulationParams,
-  baseline: SimulationParams,
-  profile: DiseaseProfile,
-  onParamsChange: Dispatch<SetStateAction<SimulationParams>>,
-): ReactNode {
-  const value = getControlValue(params, control.key)
-  const info = profile.tooltipOverrides?.[control.key] ?? control.info
-  const modified = isControlModified(params, baseline, control.key)
-
-  if (control.inputType === 'toggle') {
-    return (
-      <div
-        key={control.key}
-        className="flex items-center justify-between text-xs text-slate-300"
-      >
-        <LabelWithInfo label={control.label} info={info} modified={modified} />
-        <input
-          type="checkbox"
-          checked={Boolean(value)}
-          onChange={(event) =>
-            onParamsChange((prev) =>
-              setControlValue(prev, control.key, event.target.checked),
-            )
-          }
-        />
-      </div>
-    )
-  }
-
-  const numericValue = Number(value)
-  const valueText = formatNumericValue(numericValue, control.valueDecimals)
-
-  if (control.inputType === 'number') {
-    return (
-      <div key={control.key} className="block text-xs text-slate-300">
-        <div className="mb-1">
-          <LabelWithInfo label={control.label} info={info} modified={modified} />
-        </div>
-        <input
-          className={clsx(
-            'w-full rounded border bg-slate-900 px-2 py-1 text-sm',
-            modified ? 'border-amber-500/60' : 'border-slate-700',
-          )}
-          type="number"
-          min={control.min}
-          max={control.max}
-          step={control.step}
-          value={numericValue}
-          onChange={(event) =>
-            onParamsChange((prev) =>
-              setControlValue(prev, control.key, Number(event.target.value)),
-            )
-          }
-        />
-      </div>
-    )
-  }
-
+function ToggleControl({ spec, value, info, modified, onChange }: ControlInputProps) {
   return (
-    <div key={control.key} className="block">
-      <div className="mb-1 flex items-center justify-between text-xs text-slate-300">
-        <LabelWithInfo label={control.label} info={info} modified={modified} />
-        <span className="font-mono text-slate-200">{valueText}</span>
-      </div>
+    <div className="flex items-center justify-between text-xs text-slate-300">
+      <ControlLabel label={spec.label} info={info} modified={modified} />
       <input
-        className={clsx(
-          'w-full',
-          modified ? 'accent-amber-400' : 'accent-indigo-400',
-        )}
-        type="range"
-        min={control.min}
-        max={control.max}
-        step={control.step}
-        value={numericValue}
-        onChange={(event) =>
-          onParamsChange((prev) =>
-            setControlValue(prev, control.key, Number(event.target.value)),
-          )
-        }
+        type="checkbox"
+        checked={Boolean(value)}
+        onChange={(event) => onChange(event.target.checked)}
       />
     </div>
   )
 }
 
-function groupControls(controls: ControlSpec[]): Array<{
-  group: string | null
+function NumberControl({ spec, value, info, modified, onChange }: ControlInputProps) {
+  return (
+    <div className="block text-xs text-slate-300">
+      <div className="mb-1">
+        <ControlLabel label={spec.label} info={info} modified={modified} />
+      </div>
+      <input
+        type="number"
+        min={spec.min}
+        max={spec.max}
+        step={spec.step}
+        value={Number(value)}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className={clsx(
+          'w-full rounded border bg-slate-900 px-2 py-1 text-sm',
+          modified ? 'border-amber-500/60' : 'border-slate-700',
+        )}
+      />
+    </div>
+  )
+}
+
+function SliderControl({ spec, value, info, modified, onChange }: ControlInputProps) {
+  const numeric = Number(value)
+  const formatted = numeric.toFixed(spec.valueDecimals ?? 2)
+  return (
+    <div className="block">
+      <div className="mb-1 flex items-center justify-between text-xs text-slate-300">
+        <ControlLabel label={spec.label} info={info} modified={modified} />
+        <span className="font-mono text-slate-200">{formatted}</span>
+      </div>
+      <input
+        type="range"
+        min={spec.min}
+        max={spec.max}
+        step={spec.step}
+        value={numeric}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className={clsx('w-full', modified ? 'accent-amber-400' : 'accent-indigo-400')}
+      />
+    </div>
+  )
+}
+
+const INPUT_COMPONENTS = {
+  toggle: ToggleControl,
+  number: NumberControl,
+  slider: SliderControl,
+} satisfies Record<ControlSpec['inputType'], (props: ControlInputProps) => ReactNode>
+
+// ---------------------------------------------------------------------------
+// Layout helpers
+// ---------------------------------------------------------------------------
+
+interface ControlGroup {
+  label: string | null
   items: ControlSpec[]
-}> {
-  const groups: Array<{ group: string | null; items: ControlSpec[] }> = []
+}
+
+/** Cluster consecutive controls that share a `group` label so we can render
+ *  them under a single sub-heading (e.g. "Genotype survival"). */
+function groupControls(controls: ControlSpec[]): ControlGroup[] {
+  const groups: ControlGroup[] = []
   for (const control of controls) {
-    const key = control.group ?? null
+    const label = control.group ?? null
     const last = groups[groups.length - 1]
-    if (last && last.group === key) {
+    if (last && last.label === label) {
       last.items.push(control)
     } else {
-      groups.push({ group: key, items: [control] })
+      groups.push({ label, items: [control] })
     }
   }
   return groups
 }
+
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
 
 export function ControlPanel({
   params,
@@ -425,15 +345,17 @@ export function ControlPanel({
 }: ControlPanelProps) {
   const visibleSet = new Set(profile.visibleControls)
 
+  const updateControl = (key: ControlKey, value: ControlValue) =>
+    onParamsChange((prev) => writeControl(prev, key, value))
+
   const resetSection = (section: ControlSectionId) => {
     const controls = controlsForSection(section, profile.visibleControls)
-    onParamsChange((prev) => {
-      let next = prev
-      for (const control of controls) {
-        next = resetControlFromBaseline(next, baselineParams, control.key)
-      }
-      return next
-    })
+    onParamsChange((prev) =>
+      controls.reduce(
+        (acc, c) => writeControl(acc, c.key, readControl(baselineParams, c.key)),
+        prev,
+      ),
+    )
   }
 
   return (
@@ -445,8 +367,6 @@ export function ControlPanel({
         ).filter((spec) => isControlVisible(spec, params, visibleSet))
         if (sectionControls.length === 0) return null
 
-        const groups = groupControls(sectionControls)
-
         return (
           <Section
             key={section.id}
@@ -454,29 +374,33 @@ export function ControlPanel({
             caption={section.caption}
             onReset={() => resetSection(section.id)}
           >
-            {groups.map((group, groupIndex) => (
+            {groupControls(sectionControls).map((group, index) => (
               <div
-                key={group.group ?? `ungrouped-${groupIndex}`}
+                key={group.label ?? `ungrouped-${index}`}
                 className={clsx(
-                  group.group &&
+                  group.label &&
                     'rounded-md border border-slate-800/60 bg-slate-900/40 p-2',
                 )}
               >
-                {group.group ? (
+                {group.label ? (
                   <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                    {group.group}
+                    {group.label}
                   </p>
                 ) : null}
                 <div className="space-y-3">
-                  {group.items.map((control) =>
-                    renderControl(
-                      control,
-                      params,
-                      baselineParams,
-                      profile,
-                      onParamsChange,
-                    ),
-                  )}
+                  {group.items.map((spec) => {
+                    const Input = INPUT_COMPONENTS[spec.inputType]
+                    return (
+                      <Input
+                        key={spec.key}
+                        spec={spec}
+                        value={readControl(params, spec.key)}
+                        info={profile.tooltipOverrides?.[spec.key] ?? spec.info}
+                        modified={isControlModified(params, baselineParams, spec.key)}
+                        onChange={(value) => updateControl(spec.key, value)}
+                      />
+                    )
+                  })}
                 </div>
               </div>
             ))}
