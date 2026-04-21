@@ -1,73 +1,75 @@
-# React + TypeScript + Vite
+# Recessive Gene Simulation
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Educational simulator for recessive disease population genetics.
 
-Currently, two official plugins are available:
+**Try it live: [artvandelay.github.io/recessive-gene-simulation](https://artvandelay.github.io/recessive-gene-simulation/)**
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## What it is
 
-## React Compiler
+An interactive classroom-friendly simulator that shows how allele and genotype frequencies change across generations under real-world forces: natural selection, genetic drift, non-random mating, mutation, and treatment-era shifts. It is meant for students, teachers, and curious readers who want to see concepts like *mutation-selection balance* and *heterozygote advantage* play out visually instead of reading about them.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+No biology prerequisites are required to run it — pick a disease, pick a preset, and watch the population evolve.
 
-## Expanding the ESLint configuration
+## How to use it
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+1. Open the live demo.
+2. Pick a **disease profile** (e.g. Sickle Cell, Beta-Thalassemia Major). The profile controls which biological forces are relevant and the genotype labels you see (e.g. `HbAA / HbAS / HbSS`).
+3. Pick a **preset** — each preset is a curated scenario that tells a specific story (e.g. *Sickle-like Balancing Selection*, *Mutation-Selection Balance*).
+4. Tweak any control on the right panel. Controls you have changed from the preset show a small amber dot so you can tell at a glance what's been customized.
+5. Watch the **timeline** and **population view** update generation-by-generation. Use the play/pause/step controls to scrub through time.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+Tip: click *Reset to preset* on a control to undo your tweak and bring it back to the preset value.
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## The forces at play
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+The controls are grouped into sections that map directly to a concept students learn:
+
+| Section | What it models |
+| --- | --- |
+| **Population Setup** | Starting population size, starting allele frequency, whether `N` is held constant |
+| **Mating and Drift Forces** | Carrier-pairing bias, consanguinity, endogamy — and how small `N` causes drift |
+| **Natural Selection** | Genotype-specific survival (`w_AA / w_Aa / w_aa`) and fertility multipliers |
+| **Environmental Forces** | Malaria pressure and heterozygote-advantage strength |
+| **Treatment Era** | A generation after which survival and fertility of affected genotypes improve |
+| **Simulation Settings** | Number of generations, average children per couple, mutation rate |
+
+Mutation input is explicitly modeled as a per-allele, per-generation rate (`μ`), which lets you demonstrate **mutation-selection balance**: a rare allele can persist at a non-zero equilibrium even under strong selection if mutation keeps refilling it.
+
+## Included disease profiles and presets
+
+| Disease profile | Representative presets |
+| --- | --- |
+| **Sickle Cell Disease** | Balancing Selection, Low-Malaria Setting, With Consanguinity |
+| **Beta-Thalassemia Major** | With Treatment Improvement, Without Treatment, With Mutation Input |
+| **Hereditary Spherocytosis** (dominant approx) | Dominant Burden + Mild Selection, + Care Improvement, + Endogamy |
+| **G6PD Deficiency** (X-linked approx) | Low Selection, In Malaria Context, Small Population with Malaria |
+| **HbSC Disease** (multi-allelic approx) | Moderate Burden, With Care Improvement, Without Malaria |
+| **Generic Teaching Profile** | Neutral, Severe Recessive, Mutation-Selection Balance, Small Population Drift |
+
+The Generic Teaching Profile is designed as a clean baseline for isolating one force at a time — a good starting point if you want to build intuition before using the disease-specific profiles.
+
+## Development
+
+Stack: React 19, TypeScript, Vite, Tailwind v4, Vitest.
+
+```bash
+npm install
+npm run dev      # local dev server
+npm test         # vitest one-shot
+npm run lint
+npm run build    # type-check + production build
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Project layout:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
 ```
+src/
+  components/    # UI: ControlPanel, PopulationView, ScenarioCard, StatsPanel, TimelineControls
+  sim/           # Pure simulation: engine.ts, diseases.ts, presets.ts, controlSchema.ts, types.ts
+```
+
+The simulation engine (`src/sim/engine.ts`) is pure TypeScript with unit tests (`engine.test.ts`, `mutation.test.ts`, `stress.test.ts`, `diseaseProfiles.test.ts`) — safe to import and reason about independently of the UI.
+
+### Deployment
+
+Pushes to `main` auto-deploy to GitHub Pages via [.github/workflows/deploy-pages.yml](.github/workflows/deploy-pages.yml). The Vite `base` is set to `/recessive-gene-simulation/` in [vite.config.ts](vite.config.ts) to match the Pages URL.
